@@ -10,14 +10,22 @@ import uuid
 import mysql.connector
 from mysql.connector import errorcode
 import asyncio
+from mysql.connector.cursor import MySQLCursor
+from mysql.connector.connection import MySQLConnection
+from enum import Enum,auto
 
-
-
+class UserState(Enum):
+    nickName = auto()
 class Database:
-    def __init__(self):
-        self.cnx = mysql.connector.connect(**dbconfig)
-        self.cursor = self.cnx.cursor()
-    def configureTables(self):
+    def __init__(self)->None:
+        self.cnx:MySQLConnection = mysql.connector.connect(**dbconfig)
+        self.cursor:MySQLCursor = self.cnx.cursor()
+
+    def __del__(self)->None:
+        self.cursor.close()
+        self.cnx.close()
+
+    def configureTables(self)->None:
         tables = {}
         tables['users'] = (
             "create table if not exists users( "
@@ -40,11 +48,27 @@ class Database:
         for table in tables:
             self.cursor.execute(tables[table])
         self.cnx.commit()
-        self.cursor.close()
-        self.cnx.close()
-    def isUserSaved(self,userid):
-        pass
+    
+
+    def getUserData(self,userid)->tuple:
+        sql = (
+            "select * from users "
+            "where userid = %s"
+        )
+        self.cursor.execute(sql,(userid,))
+        return self.cursor.fetchone()
+    def saveUser(self,userid) -> None:
+        sql = (
+            "insert into users "
+            "(userid) "
+            "values(%s)"
+        )
+        self.cursor.execute(sql,(userid,))
+        self.cnx.commit()
+
         
+
+
 
 
 
@@ -53,6 +77,10 @@ class Database:
 api = Client('bot' , api_id=api_id , api_hash=api_hash , bot_token=bot_token)
 db = Database()
 db.configureTables()
+del db
+userStates = {}
+
+
 @api.on_callback_query(filters.regex(r'savepost_(\d+)'))
 async def savePostCallBack(client:Client , query:CallbackQuery):
     print(query)
@@ -110,7 +138,28 @@ async def savePost(client:Client , message:Message):
 
 @api.on_message(filters.private & ~filters.chat(owner_id))
 async def userChecker(client:Client,message:Message):
-    message.reply('hello')
+    db = Database()
+    text = (
+            'برای کار با ربات,لطفا یک لقب برای خود انتخاب کنید\n'
+            'این لقب برای قسمت ارسال جزوه استفاده خواهد شد'
+    )
+    try:
+        db.saveUser(message.chat.id)
+    except mysql.connector.IntegrityError as err:
+        #exists
+        userData = db.getUserData(message.chat.id)
+        if(not userData[2]):
+            await message.reply(text)
+            userStates[message.chat.id]=UserState.nickName
+            return
+            
+        message.continue_propagation()
+
+    else:
+        #it's a new user
+        await message.reply(text)
+        userStates[message.chat.id]=UserState.nickName
+
 
 
 @api.on_inline_query()
