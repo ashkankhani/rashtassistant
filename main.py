@@ -2,7 +2,7 @@ from config import *
 from pyrogram import Client
 from pyrogram import filters
 from pyrogram.types import (Message,InlineKeyboardMarkup,InlineKeyboardButton,
-CallbackQuery,InputTextMessageContent,InlineQueryResultCachedDocument,ReplyKeyboardMarkup,KeyboardButton,InlineQuery)
+CallbackQuery,InlineQueryResultCachedDocument,ReplyKeyboardMarkup,KeyboardButton,InlineQuery)
 from pyrogram.errors import UserIsBlocked
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors.exceptions.bad_request_400 import PeerIdInvalid
@@ -41,7 +41,7 @@ class Database:
         tables['files'] = (
             "create table if not exists files( "
             "id int primary key auto_increment, "
-            "fileid varchar(100) primary key, "
+            "fileid varchar(100), "
             "title varchar(100), "
             "filedes varchar(500), "
             "accept int default 0, "
@@ -132,7 +132,7 @@ class Database:
         self.cnx.commit()
     def rejectFile(self,id):
         sql = (
-            "delete files "
+            "delete from files "
             "where id = %s"
         )
         self.cursor.execute(sql,(id,))
@@ -140,7 +140,9 @@ class Database:
 
     def getAcceptedFiles(self,word)->list:
         sql = (
-            'select * from files '
+            'select files.*,users.nickname '
+            'from files inner join users '
+            'on files.senderid = users.userid '
             'where accept = 1 and title like %s'
         )
         self.cursor.execute(sql,('%'+word+'%',))
@@ -156,11 +158,7 @@ class Database:
 
 
 
-api = Client('bot' , api_id=api_id , api_hash=api_hash , bot_token=bot_token,proxy={
-    'scheme' : 'socks5',
-    'hostname' : '127.0.0.1',
-    'port': 9150
-})
+api = Client('bot' , api_id=api_id , api_hash=api_hash , bot_token=bot_token,proxy=proxy)
 db = Database()
 db.configureTables()
 del db
@@ -316,7 +314,7 @@ async def inputText(client:Client , message:Message):
 
     if(userState == UserState.NICKNAME):
         db.saveUserNickName(message.text , message.chat.id)
-        await message.reply('لقب با موفقیت ذخیره شد!')
+        await message.reply('لقب با موفقیت ذخیره شد!',reply_markup=replyMarkup)
         del userStates[message.chat.id]
         return
 
@@ -412,7 +410,7 @@ async def answer(client, inline_query:InlineQuery):
             InlineQueryResultCachedDocument(
                 document_file_id=tup[1],
                 title=tup[2],
-                description=tup[3],
+                description=tup[3]+'\n'+'لقب کاربر: ' + tup[6],
             )
         )
     await inline_query.answer(
